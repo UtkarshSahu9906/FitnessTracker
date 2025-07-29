@@ -1,98 +1,169 @@
 package com.utkarsh.fitnesstracker;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
-import android.Manifest;
-import android.content.Context;
-import android.content.pm.PackageManager;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Bundle;
-import android.view.View;
-import android.widget.Button;
+import android.util.Log;
 import android.widget.TextView;
-import android.widget.Toast;
 
-import com.github.mikephil.charting.charts.LineChart;
-import com.github.mikephil.charting.components.Description;
+import com.airbnb.lottie.LottieAnimationView;
+import com.github.mikephil.charting.charts.BarChart;
 import com.github.mikephil.charting.components.XAxis;
-import com.github.mikephil.charting.data.Entry;
-import com.github.mikephil.charting.data.LineData;
-import com.github.mikephil.charting.data.LineDataSet;
+import com.github.mikephil.charting.components.YAxis;
+import com.github.mikephil.charting.data.BarData;
+import com.github.mikephil.charting.data.BarDataSet;
+import com.github.mikephil.charting.data.BarEntry;
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.android.material.progressindicator.CircularProgressIndicator;
 
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
     private SensorManager sensorManager;
     private Sensor stepCounterSensor;
-    private TextView tvSteps, tvDistance, tvCalories;
-    private Button btnReset;
-    private LineChart chart;
 
+    // Views
+    private TextView tvSteps, tvDistance, tvCalories, tvGoal;
+    private CircularProgressIndicator progressCircle;
+    private BarChart chart;
+    private FloatingActionButton fabReset;
+    private LottieAnimationView lottieSteps, lottieDistance, lottieCalories;
+
+    // Data
     private int totalSteps = 0;
     private int previousTotalSteps = 0;
-    private float strideLength = 0.762f; // Average stride length in meters (can be made configurable)
-    private float weight = 70f; // User weight in kg (can be made configurable)
-
-    private ArrayList<Entry> stepEntries = new ArrayList<>();
-    private ArrayList<String> labels = new ArrayList<>();
-    private int dataPoints = 0;
-    private final int MAX_DATA_POINTS = 7; // Show last 7 data points
+    private final int dailyGoal = 10000;
+    private final float strideLength = 0.762f; // meters
+    private final float weight = 70f; // kg
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        initializeViews();
+        setupChart();
+        setupSensors();
+        setupClickListeners();
+    }
+
+    private void initializeViews() {
+        // Required views
         tvSteps = findViewById(R.id.tvSteps);
+        progressCircle = findViewById(R.id.progressCircle);
+        chart = findViewById(R.id.chart);
+        fabReset = findViewById(R.id.fabReset);
+        tvGoal = findViewById(R.id.tvGoal);
+
+        // Optional views with null checks
         tvDistance = findViewById(R.id.tvDistance);
         tvCalories = findViewById(R.id.tvCalories);
-        btnReset = findViewById(R.id.btnReset);
-        chart = findViewById(R.id.chart);
 
-        setupChart();
-        loadData();
-        resetSteps();
+        lottieSteps = findViewById(R.id.lottieSteps);
+        lottieDistance = findViewById(R.id.lottieDistance);
+        lottieCalories = findViewById(R.id.lottieCalories);
 
-        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
+        // Initialize progress
+        progressCircle.setProgress(0);
+        updateGoalText(0);
+    }
+
+    private void updateGoalText(int steps) {
+        if (tvGoal != null) {
+            tvGoal.setText(String.format(Locale.getDefault(), "%,d / %,d steps", steps, dailyGoal));
+        }
+    }
+
+    private void setupSensors() {
+        sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+        if (sensorManager != null) {
+            stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
+        }
 
         if (stepCounterSensor == null) {
-            Toast.makeText(this, "No step counter sensor detected on this device", Toast.LENGTH_SHORT).show();
+            Log.e("FitnessTracker", "No step counter sensor found");
+            // Show appropriate UI message if needed
+        }
+    }
+
+    private void setupChart() {
+        if (chart == null) return;
+
+        chart.getDescription().setEnabled(false);
+        chart.setDrawBarShadow(false);
+        chart.setDrawValueAboveBar(true);
+        chart.setPinchZoom(false);
+        chart.setDrawGridBackground(false);
+
+        XAxis xAxis = chart.getXAxis();
+        xAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
+        xAxis.setDrawGridLines(false);
+        xAxis.setGranularity(1f);
+        xAxis.setLabelCount(7);
+        xAxis.setValueFormatter(new IndexAxisValueFormatter(new String[]{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}));
+
+        YAxis leftAxis = chart.getAxisLeft();
+        leftAxis.setLabelCount(8, false);
+        leftAxis.setPosition(YAxis.YAxisLabelPosition.OUTSIDE_CHART);
+        leftAxis.setSpaceTop(15f);
+        leftAxis.setAxisMinimum(0f);
+        leftAxis.setGranularity(1000f);
+
+        chart.getAxisRight().setEnabled(false);
+        chart.getLegend().setEnabled(false);
+
+        // Sample data
+        ArrayList<BarEntry> entries = new ArrayList<>();
+        entries.add(new BarEntry(0, 4500));
+        entries.add(new BarEntry(1, 7200));
+        entries.add(new BarEntry(2, 9800));
+        entries.add(new BarEntry(3, 11000));
+        entries.add(new BarEntry(4, 8500));
+        entries.add(new BarEntry(5, 6500));
+        entries.add(new BarEntry(6, 12000));
+
+        BarDataSet dataSet = new BarDataSet(entries, "Steps");
+        dataSet.setColor(ContextCompat.getColor(this, R.color.primary));
+
+        BarData data = new BarData(dataSet);
+        data.setBarWidth(0.9f);
+        chart.setData(data);
+        chart.setFitBars(true);
+        chart.animateY(1500);
+    }
+
+    private void setupClickListeners() {
+        if (fabReset != null) {
+            fabReset.setOnClickListener(v -> {
+                previousTotalSteps = totalSteps;
+                updateUI();
+                animateReset();
+            });
+        }
+    }
+
+    private void animateReset() {
+        if (fabReset != null) {
+            fabReset.animate().rotationBy(360).setDuration(500).start();
         }
 
-        btnReset.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                resetSteps();
-                saveData();
-                updateChart();
-            }
-        });
-
-        // Check and request permission
-        if (ContextCompat.checkSelfPermission(this,
-                Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACTIVITY_RECOGNITION},
-                    1);
-        }
+        if (lottieSteps != null) lottieSteps.playAnimation();
+        if (lottieDistance != null) lottieDistance.playAnimation();
+        if (lottieCalories != null) lottieCalories.playAnimation();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (stepCounterSensor != null) {
+        if (sensorManager != null && stepCounterSensor != null) {
             sensorManager.registerListener(this, stepCounterSensor, SensorManager.SENSOR_DELAY_NORMAL);
         }
     }
@@ -103,115 +174,46 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         if (sensorManager != null) {
             sensorManager.unregisterListener(this);
         }
-        saveData();
     }
 
     @Override
     public void onSensorChanged(SensorEvent event) {
         if (event.sensor.getType() == Sensor.TYPE_STEP_COUNTER) {
             totalSteps = (int) event.values[0];
-            int currentSteps = totalSteps - previousTotalSteps;
-
-            // Update UI
-            tvSteps.setText("Steps: " + currentSteps);
-
-            // Calculate distance (steps * stride length in km)
-            float distance = currentSteps * strideLength / 1000;
-            tvDistance.setText(String.format(Locale.getDefault(), "Distance: %.2f km", distance));
-
-            // Calculate calories (steps * 0.04 * weight in kg)
-            float calories = currentSteps * 0.04f * weight;
-            tvCalories.setText(String.format(Locale.getDefault(), "Calories: %.1f kcal", calories));
-
-            // Update chart data periodically
-            if (dataPoints % 10 == 0) { // Update every 10 sensor updates to reduce frequency
-                updateChartData(currentSteps);
-            }
-            dataPoints++;
+            runOnUiThread(this::updateUI);
         }
     }
 
+    private void updateUI() {
+        int currentSteps = totalSteps - previousTotalSteps;
+
+        // Update steps
+        if (tvSteps != null) {
+            tvSteps.setText(String.format(Locale.getDefault(), "%,d", currentSteps));
+        }
+
+        // Update distance
+        if (tvDistance != null) {
+            float distance = currentSteps * strideLength / 1000;
+            tvDistance.setText(String.format(Locale.getDefault(), "%.2f km", distance));
+        }
+
+        // Update calories
+        if (tvCalories != null) {
+            float calories = currentSteps * 0.04f * weight;
+            tvCalories.setText(String.format(Locale.getDefault(), "%.0f kcal", calories));
+        }
+
+        // Update progress (0-100)
+        int progress = Math.min(100, (int) (((float) currentSteps / dailyGoal) * 100));
+        if (progressCircle != null) {
+            progressCircle.setProgress(progress);
+        }
+
+        updateGoalText(currentSteps);
+    }
     @Override
     public void onAccuracyChanged(Sensor sensor, int accuracy) {
-        // Not needed for this implementation
-    }
-
-    private void resetSteps() {
-        previousTotalSteps = totalSteps;
-        tvSteps.setText("Steps: 0");
-        tvDistance.setText("Distance: 0.0 km");
-        tvCalories.setText("Calories: 0 kcal");
-    }
-
-    private void saveData() {
-        getSharedPreferences("FitnessPrefs", MODE_PRIVATE)
-                .edit()
-                .putInt("previousTotalSteps", previousTotalSteps)
-                .putInt("totalSteps", totalSteps)
-                .apply();
-    }
-
-    private void loadData() {
-        previousTotalSteps = getSharedPreferences("FitnessPrefs", MODE_PRIVATE)
-                .getInt("previousTotalSteps", 0);
-        totalSteps = getSharedPreferences("FitnessPrefs", MODE_PRIVATE)
-                .getInt("totalSteps", 0);
-    }
-
-    private void setupChart() {
-        Description description = new Description();
-        description.setText("Step Tracking History");
-        chart.setDescription(description);
-
-        XAxis xAxis = chart.getXAxis();
-        xAxis.setPosition(XAxis.XAxisPosition.BOTTOM);
-        xAxis.setValueFormatter(new IndexAxisValueFormatter(labels));
-
-        chart.getAxisRight().setEnabled(false);
-    }
-
-    private void updateChartData(int currentSteps) {
-        // Get current time for label
-        SimpleDateFormat sdf = new SimpleDateFormat("HH:mm", Locale.getDefault());
-        String currentTime = sdf.format(new Date());
-
-        // Add new entry
-        stepEntries.add(new Entry(stepEntries.size(), currentSteps));
-        labels.add(currentTime);
-
-        // Limit the number of data points
-        if (stepEntries.size() > MAX_DATA_POINTS) {
-            stepEntries.remove(0);
-            labels.remove(0);
-        }
-
-        updateChart();
-    }
-
-    private void updateChart() {
-        LineDataSet dataSet = new LineDataSet(stepEntries, "Steps");
-        dataSet.setColor(getResources().getColor(android.R.color.holo_blue_dark));
-        dataSet.setValueTextColor(getResources().getColor(android.R.color.black));
-        dataSet.setCircleColor(getResources().getColor(android.R.color.holo_blue_dark));
-
-        LineData lineData = new LineData(dataSet);
-        chart.setData(lineData);
-
-        // Update X-axis labels
-        chart.getXAxis().setValueFormatter(new IndexAxisValueFormatter(labels));
-
-        chart.invalidate(); // refresh
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == 1) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "Permission granted", Toast.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, "Permission denied - step counting may not work", Toast.LENGTH_SHORT).show();
-            }
-        }
+        // Not used
     }
 }
